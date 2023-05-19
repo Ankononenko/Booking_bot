@@ -3,6 +3,11 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryH
 from datetime import datetime, timedelta
 import sqlite3
 import logging
+import pytz
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.date import DateTrigger
+
+local_tz = pytz.timezone('Europe/Moscow')
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -22,6 +27,10 @@ c.execute('''CREATE TABLE IF NOT EXISTS bookings
 # Save (commit) the changes
 conn.commit()
 
+# Create scheduler
+scheduler = BackgroundScheduler()
+scheduler.start()
+
 def start(update: Update, context: CallbackContext) -> None:
     keyboard = [
         [InlineKeyboardButton("Book a time", callback_data='1'),
@@ -29,7 +38,11 @@ def start(update: Update, context: CallbackContext) -> None:
         [InlineKeyboardButton("View your bookings", callback_data='3')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Please choose:', reply_markup=reply_markup)
+    # Check if update.message is None
+    if update.message:
+        update.message.reply_text('Please choose:', reply_markup=reply_markup)
+    else:
+        update.callback_query.message.reply_text('Please choose:', reply_markup=reply_markup)
 
 # Helper function to generate the next 7 days
 def generate_dates():
@@ -55,15 +68,18 @@ def button(update: Update, context: CallbackContext) -> None:
         cancel_time(update, context)
     elif query.data == '3':
         view_bookings(update, context)
-        start(update, context)
 
 def display_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
     # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
+    # Get the current date and time
+    current_time = datetime.now().strftime('%H:%M')
+    current_date = datetime.now().strftime('%Y-%m-%d')
+
     # Query the database for the bookings on the selected date
-    c.execute("SELECT * FROM bookings WHERE booking_date = ? ORDER BY start_time", (selected_date,))
+    c.execute("SELECT * FROM bookings WHERE booking_date = ? AND ((booking_date > ?) OR (booking_date = ? AND end_time >= ?)) ORDER BY start_time", (selected_date, current_date, current_date, current_time))
 
     bookings = c.fetchall()
 
@@ -83,18 +99,28 @@ from dateutil.parser import parse as parse_time
 
 def book_time(update: Update, context: CallbackContext) -> None:
     if update.message is not None:
-        message_text = update.message.text
+        message_text = update.message.text if update.message else update.callback_query.message.text
         if 'selected_date' in context.user_data:
             try:
-                start_time, end_time = message_text.split('-')
+                # Splitting the message text and striping leading and trailing whitespaces
+                start_time, end_time = [time.strip() for time in message_text.split('-')]
+
                 # Check if the start time is later than or equal to the end time
                 if start_time >= end_time:
                     update.message.reply_text("The start time cannot be later than or equal to the end time.")
                     return
 
+                # Convert booking start_time to datetime object
+                booking_start_time = datetime.strptime(f"{context.user_data['selected_date']} {start_time}", '%Y-%m-%d %H:%M')
+                # Check if the booking time is in the future
+                if booking_start_time < datetime.now():
+                    update.message.reply_text("You can only book future time slots.")
+                    return
+
                 booking_date = context.user_data['selected_date']
                 user_id = update.message.from_user.id
 
+                # Create a new SQLite connection and cursor
                 conn = sqlite3.connect('bookings.db')
                 c = conn.cursor()
 
@@ -116,6 +142,13 @@ def book_time(update: Update, context: CallbackContext) -> None:
                     update.message.reply_text("This time slot or the time slot 30 minutes prior or after is already taken")
                 start(update, context)
 
+                # Subtract 15 minutes to get the reminder time
+                reminder_time = local_tz.localize(booking_start_time - timedelta(minutes=15))
+
+                # Schedule the reminder
+                scheduler.add_job(send_reminder, trigger=DateTrigger(run_date=reminder_time, timezone=local_tz), args=[user_id, booking_date, start_time, end_time])
+
+                # Close the connection
                 conn.close()
             except ValueError:
                 update.message.reply_text("Please enter a valid time range in the format 'HH:MM-HH:MM'")
@@ -125,18 +158,25 @@ def book_time(update: Update, context: CallbackContext) -> None:
 
 def view_bookings(update: Update, context: CallbackContext) -> None:
     user_id = update.callback_query.from_user.id
-    
+
+    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
-    # Get the current date
+    # Get the current date and time
     current_date = datetime.now().strftime('%Y-%m-%d')
+    current_time = datetime.now().strftime('%H:%M')
 
     # Retrieve the user's bookings
-    c.execute("SELECT * FROM bookings WHERE user_id = ? AND booking_date >= ? ORDER BY booking_date, start_time", (user_id, current_date))
+    c.execute("""
+        SELECT * FROM bookings
+        WHERE user_id = ? AND (booking_date > ? OR (booking_date = ? AND end_time > ?))
+        ORDER BY booking_date, start_time
+    """, (user_id, current_date, current_date, current_time))
 
     bookings = c.fetchall()
 
+    # Close the connection
     conn.close()
 
     if bookings:
@@ -151,15 +191,27 @@ def view_bookings(update: Update, context: CallbackContext) -> None:
 
 def cancel_time(update: Update, context: CallbackContext) -> None:
     user_id = update.callback_query.from_user.id
-    
+
+    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
-    # Retrieve the user's bookings
-    c.execute("SELECT * FROM bookings WHERE user_id = ?", (user_id,))
+    # Get the current datetime
+    now = datetime.now()
+
+    # Convert the datetime to the format used in the database
+    current_datetime = now.strftime('%Y-%m-%d %H:%M')
+
+    # Retrieve the user's bookings that are later than the current time
+    c.execute("""
+        SELECT * FROM bookings
+        WHERE user_id = ? AND booking_date || ' ' || end_time > ?
+        ORDER BY booking_date, start_time
+    """, (user_id, current_datetime))
 
     bookings = c.fetchall()
 
+    # Close the connection
     conn.close()
 
     if bookings:
@@ -170,14 +222,14 @@ def cancel_time(update: Update, context: CallbackContext) -> None:
         reply_markup = InlineKeyboardMarkup(keyboard)
         update.callback_query.edit_message_text('Please choose a booking to cancel:', reply_markup=reply_markup)
     else:
-        update.callback_query.edit_message_text("You have no bookings.")
-    start(update, context)
+        update.callback_query.edit_message_text("You have no future bookings.")
 
 def delete_booking(update: Update, context: CallbackContext) -> None:
     if update.callback_query.data.startswith('cancel_'):
         user_id = update.callback_query.from_user.id
         _, id, booking_date, start_time, end_time = update.callback_query.data.split('_')
 
+        # Create a new SQLite connection and cursor
         conn = sqlite3.connect('bookings.db')
         c = conn.cursor()
 
@@ -186,13 +238,17 @@ def delete_booking(update: Update, context: CallbackContext) -> None:
 
         conn.commit()
 
+        # Close the connection
         conn.close()
 
         update.callback_query.edit_message_text(f"Cancelled booking on {booking_date} from {start_time} to {end_time}")
         start(update, context)
 
+def send_reminder(user_id: int, booking_date: str, start_time: str, end_time: str) -> None:
+    context.bot.send_message(chat_id=user_id, text=f"You have a booking today on {booking_date} from {start_time} to {end_time}. This is your 15-minute reminder.")
+
 def main() -> None:
-    updater = Updater('YOUR_TOKEN', use_context=True)
+    updater = Updater('API_KEY_GOES_HERE', use_context=True)
 
     dispatcher = updater.dispatcher
 
