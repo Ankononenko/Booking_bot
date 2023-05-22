@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize the bot
-bot = Bot(token='6095002449:AAGi8BvluFbGR1zSxPJ2fiOtPIWvGJGf0-Q')
+bot = Bot(token='YOUR_API_KEY_GOES_HERE')
 
 # Function to send start reminders
 def send_start_reminders():
