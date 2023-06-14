@@ -214,12 +214,11 @@ def view_bookings(update: Update, context: CallbackContext) -> None:
         message_text = "Your bookings are:\n"
         for booking in bookings:
             id, _, start_booking_date, end_booking_date, start_time, end_time = booking
-            message_text += f"{start_booking_date}: from {start_time} to {end_time}\n"
+            message_text += f"From {start_booking_date} {start_time} to {end_booking_date} {end_time}\n"
         update.callback_query.edit_message_text(message_text)
     else:
         update.callback_query.edit_message_text("You have no upcoming bookings.")
     start(update, context)
-
 
 def cancel_time(update: Update, context: CallbackContext) -> None:
     user_id = update.callback_query.from_user.id
