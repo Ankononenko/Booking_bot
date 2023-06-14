@@ -220,6 +220,7 @@ def view_bookings(update: Update, context: CallbackContext) -> None:
         update.callback_query.edit_message_text("You have no upcoming bookings.")
     start(update, context)
 
+
 def cancel_time(update: Update, context: CallbackContext) -> None:
     user_id = update.callback_query.from_user.id
 
@@ -249,7 +250,7 @@ def cancel_time(update: Update, context: CallbackContext) -> None:
         keyboard = []
         for booking in bookings:
             id, _, start_booking_date, end_booking_date, start_time, end_time = booking
-            keyboard.append([InlineKeyboardButton(f"{start_booking_date}: from {start_time} to {end_time}", callback_data=f'cancel_{id}_{start_booking_date}_{end_booking_date}_{start_time}_{end_time}')])
+            keyboard.append([InlineKeyboardButton(f"From {start_booking_date} {start_time} to {end_booking_date} {end_time}", callback_data=f'cancel_{id}_{start_booking_date}_{end_booking_date}_{start_time}_{end_time}')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         update.callback_query.edit_message_text('Please choose a booking to cancel:', reply_markup=reply_markup)
