@@ -5,6 +5,7 @@ import sqlite3
 import logging
 import pytz
 import locale
+from math import floor, ceil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
@@ -76,6 +77,8 @@ def button(update: Update, context: CallbackContext) -> None:
     elif query.data == '3':
         view_bookings(update, context)
 
+from math import floor, ceil
+
 def display_not_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
     # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
@@ -125,12 +128,25 @@ def display_not_booked_times(update: Update, context: CallbackContext, selected_
         for start, end in free_time_slots:
             start_date, start_time = start.split(" ")
             end_date, end_time = end.split(" ")
-            message_text += f"{start_date} - {end_date}                             {start_time} - {end_time}\n"
+
+            # Rounding start_time for display
+            start_time_hour, start_time_minute = map(int, start_time.split(":"))
+            start_time_minute = floor(start_time_minute / 5) * 5
+            start_time = f"{start_time_hour:02d}:{start_time_minute:02d}"
+
+            # Rounding end_time for display
+            end_time_hour, end_time_minute = map(int, end_time.split(":"))
+            end_time_minute = ceil(end_time_minute / 5) * 5
+            if end_time_minute == 60:
+                end_time_hour += 1
+                end_time_minute = 0
+            end_time = f"{end_time_hour:02d}:{end_time_minute:02d}"
+
+            message_text += f"{start_date} - {end_date}        {start_time} - {end_time}\n"
 
         context.bot.send_message(chat_id=update.effective_chat.id, text=message_text)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Чтобы выйти в главное меню нажми /start\nВ этот день все занято, выбери другой день для стирки")
-
+        context.bot.send_message(chat_id=update.effective_chat.id, text="В этот день все занято, выбери другой день для стирки")
 
 from dateutil.parser import parse as parse_time
 
