@@ -126,7 +126,7 @@ def display_booked_times(update: Update, context: CallbackContext, selected_date
 
     # Construct and send the message
     if free_time_slots:
-        message_text = "Следующее время свободно в выбранный день + 4 часа после:\n"
+        message_text = "Свободное время в выбранный день + 4 часа после:\n"
         for start, end in free_time_slots:
             start_date, start_time = start.split(" ", 1)
             end_date, end_time = end.split(" ", 1)
@@ -154,6 +154,22 @@ def book_time(update: Update, context: CallbackContext) -> None:
                 start_time_dt = datetime.strptime(start_time, "%H:%M")
                 end_time_dt = datetime.strptime(end_time, "%H:%M")
 
+                # Combine the booking date with the start time and check if it is in the past
+                booking_date = context.user_data['selected_date']
+                combined_start_datetime_naive = datetime.strptime(f"{booking_date} {start_time}", "%d.%m.%Y %H:%M")
+                
+                # Convert combined_start_datetime to timezone aware
+                moscow_tz = pytz.timezone('Europe/Moscow')
+                combined_start_datetime = moscow_tz.localize(combined_start_datetime_naive)
+                
+                # Get current datetime with timezone
+                current_datetime = datetime.now(moscow_tz)
+                
+                if combined_start_datetime < current_datetime:
+                    update.message.reply_text("Время бронирования уже прошло. Выбери время в будущем.")
+                    start(update, context)
+                    return
+
                 # Check if the start time is later than or equal to the end time
                 if start_time_dt >= end_time_dt:
                     keyboard = [
@@ -162,6 +178,21 @@ def book_time(update: Update, context: CallbackContext) -> None:
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     update.message.reply_text("Время начала стирки позднее, чем время окончания.\nТы хочешь забронировать с текущего дня по следующий?", reply_markup=reply_markup)
+                    context.user_data['start_time'] = start_time
+                    context.user_data['end_time'] = end_time
+                    return
+
+                # Calculate booking duration in minutes
+                booking_duration = (end_time_dt - start_time_dt).total_seconds() / 60
+
+                # Check if the booking duration is less than 30 minutes or longer than 180 minutes
+                if booking_duration < 30 or booking_duration > 180:
+                    keyboard = [
+                        [InlineKeyboardButton("Да", callback_data='confirm_yes')],
+                        [InlineKeyboardButton("Нет", callback_data='confirm_no')]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    update.message.reply_text("Длительность стирки меньше получаса или дольше 3 часов.\nТы хочешь забронировать это время?", reply_markup=reply_markup)
                     context.user_data['start_time'] = start_time
                     context.user_data['end_time'] = end_time
                     return
@@ -190,7 +221,7 @@ def confirm_booking(update: Update, context: CallbackContext) -> None:
 
 def process_booking(update: Update, context: CallbackContext, start_time: str, end_time: str) -> None:
     booking_start_date = context.user_data['selected_date']
-    booking_end_date = context.user_data.get('selected_end_date', booking_start_date)  # get end date from context or use start date if not set
+    booking_end_date = context.user_data.get('selected_end_date', booking_start_date)
     user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
 
     # To handle callback_query as well as message
@@ -200,23 +231,25 @@ def process_booking(update: Update, context: CallbackContext, start_time: str, e
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
-    try:
-        # Convert the times to datetime objects and subtract 30 minutes from the start time and add 30 minutes to the end time
-        start_time_datetime = parse_time(start_time) - timedelta(minutes=30)
-        end_time_datetime = parse_time(end_time) + timedelta(minutes=30)
+    # Convert the times to datetime objects
+    start_time_datetime = parse_time(start_time)
+    end_time_datetime = parse_time(end_time)
 
-        # Format the times back to strings
-        start_time_30_min_prior = start_time_datetime.strftime('%H:%M')
-        end_time_30_min_after = end_time_datetime.strftime('%H:%M')
+    try:
+        # Subtract 30 minutes from the start time and add 30 minutes to the end time for buffer
+        start_time_30_min_prior = (start_time_datetime - timedelta(minutes=30)).strftime('%H:%M')
+        end_time_30_min_after = (end_time_datetime + timedelta(minutes=30)).strftime('%H:%M')
 
         # Check if the time slot is available
-        c.execute("SELECT * FROM bookings WHERE start_booking_date = ? AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))", (booking_start_date, start_time_30_min_prior, start_time_30_min_prior, end_time_30_min_after, end_time_30_min_after))
+        c.execute("SELECT * FROM bookings WHERE start_booking_date = ? AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))",
+                  (booking_start_date, start_time_30_min_prior, start_time_30_min_prior, end_time_30_min_after, end_time_30_min_after))
         if c.fetchone() is None:
             # If start_time is later than or equal to end_time, the booking spans across two days
             if start_time >= end_time:
                 booking_end_date = (datetime.strptime(booking_start_date, "%d.%m.%Y") + timedelta(days=1)).strftime('%d.%m.%Y')
 
-            c.execute("INSERT INTO bookings VALUES (NULL, ?, ?, ?, ?, ?)", (user_id, booking_start_date, booking_end_date, start_time, end_time))
+            c.execute("INSERT INTO bookings VALUES (NULL, ?, ?, ?, ?, ?)",
+                      (user_id, booking_start_date, booking_end_date, start_time, end_time))
             conn.commit()
 
             reply_func(f"Успешно забронировал стирку с {booking_start_date} {start_time} до {booking_end_date} {end_time}")
