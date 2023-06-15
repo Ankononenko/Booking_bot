@@ -27,7 +27,7 @@ def send_start_reminders():
     # Send a reminder for each booking
     for booking in bookings:
         id, user_id, _, _, start_time, end_time = booking
-        bot.send_message(chat_id=user_id, text=f"Reminder: Your booking is due to start at {start_time}")
+        bot.send_message(chat_id=user_id, text=f"Напоминание: Твоя стирка начнется в {start_time}")
 
     # Close the SQLite connection
     conn.close()
@@ -44,7 +44,7 @@ def send_end_reminders():
     
     for booking in bookings:
         id, user_id, _, _, start_time, end_time = booking
-        bot.send_message(chat_id=user_id, text=f"Your booking has ended at {end_time}. Thank you for using our service.")
+        bot.send_message(chat_id=user_id, text=f"Твоя стирка закончилась в {end_time}")
 
     conn.close()
 
