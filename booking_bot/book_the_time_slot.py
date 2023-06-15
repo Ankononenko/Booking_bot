@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import logging
 import pytz
+import locale
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
@@ -33,19 +34,25 @@ scheduler.start()
 
 def start(update: Update, context: CallbackContext) -> None:
     keyboard = [
-        [InlineKeyboardButton("Book a time", callback_data='1'),
-         InlineKeyboardButton("Cancel time", callback_data='2')],
-        [InlineKeyboardButton("View your bookings", callback_data='3')]
+        [InlineKeyboardButton("Забронировать", callback_data='1'),
+         InlineKeyboardButton("Отменить", callback_data='2')],
+        [InlineKeyboardButton("Посмотреть свои стирки", callback_data='3')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     # Check if update.message is None
     if update.message:
-        update.message.reply_text('Please choose:', reply_markup=reply_markup)
+        update.message.reply_text('Пожалуйста, выбери:', reply_markup=reply_markup)
     else:
-        update.callback_query.message.reply_text('Please choose:', reply_markup=reply_markup)
+        update.callback_query.message.reply_text('Пожалуйста, выбери:', reply_markup=reply_markup)
 
 # Helper function to generate the next 7 days
 def generate_dates():
+    # Set the locale to Russian
+    try:
+        locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
+    except locale.Error:
+        print("The desired locale is not supported on your system.")
+    
     dates = [datetime.now() + timedelta(days=i) for i in range(7)]
     return [date.strftime('%d.%m.%Y (%A)') for date in dates]
 
@@ -58,12 +65,12 @@ def button(update: Update, context: CallbackContext) -> None:
         dates = generate_dates()
         keyboard = [[InlineKeyboardButton(date, callback_data=f'date_{date.split(" ")[0]}')] for date in dates]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(text="Please choose a date:", reply_markup=reply_markup)
+        query.edit_message_text(text="Выбери дату:", reply_markup=reply_markup)
     elif query.data.startswith('date_'):
         selected_date = query.data[5:]
         context.user_data['selected_date'] = selected_date
         display_booked_times(update, context, selected_date)
-        query.edit_message_text(text="Please send me the time range you want to book in the format 'HH:MM-HH:MM'")
+        query.edit_message_text(text="Отправь мне время, которое хочешь забронировать в формате: '12:30-13:00'")
     elif query.data == '2':
         cancel_time(update, context)
     elif query.data == '3':
@@ -87,6 +94,11 @@ def display_booked_times(update: Update, context: CallbackContext, selected_date
 
     # Close the connection
     conn.close()
+
+    # If no bookings, send message that user can book any slot
+    if not bookings:
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Все свободно. Можешь занять любое время")
+        return
 
     # List to keep track of free time slots
     free_time_slots = []
@@ -114,12 +126,19 @@ def display_booked_times(update: Update, context: CallbackContext, selected_date
 
     # Construct and send the message
     if free_time_slots:
-        message_text = "The following time slots are available on this date and 4 hours into the next day:\n"
+        message_text = "Следующее время свободно в выбранный день + 4 часа после:\n"
         for start, end in free_time_slots:
-            message_text += f"From {start} to {end}\n"
+            start_date, start_time = start.split(" ", 1)
+            end_date, end_time = end.split(" ", 1)
+
+            if start_date == end_date:
+                message_text += f"{start_date}                              {start_time} - {end_time}\n"
+            else:
+                message_text += f"{start_date} - {end_date}       {start_time} - {end_time}\n"
+
         context.bot.send_message(chat_id=update.effective_chat.id, text=message_text)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="No time slots are available on this date.")
+        context.bot.send_message(chat_id=update.effective_chat.id, text="В этот день все занято, выбери другой день для стирки")
 
 from dateutil.parser import parse as parse_time
 
@@ -138,22 +157,22 @@ def book_time(update: Update, context: CallbackContext) -> None:
                 # Check if the start time is later than or equal to the end time
                 if start_time_dt >= end_time_dt:
                     keyboard = [
-                        [InlineKeyboardButton("Yes", callback_data='confirm_yes')],
-                        [InlineKeyboardButton("No", callback_data='confirm_no')]
+                        [InlineKeyboardButton("Да", callback_data='confirm_yes')],
+                        [InlineKeyboardButton("Нет", callback_data='confirm_no')]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
-                    update.message.reply_text("The start time is later than or equal to the end time. Do you want to book from this day till the next one?", reply_markup=reply_markup)
+                    update.message.reply_text("Время начала стирки позднее, чем время окончания.\nТы хочешь забронировать с текущего дня по следующий?", reply_markup=reply_markup)
                     context.user_data['start_time'] = start_time
                     context.user_data['end_time'] = end_time
                     return
 
                 process_booking(update, context, start_time, end_time)
 
-            except ValueError as e:
-                update.message.reply_text(f"Error: {e}\nPlease enter a valid time range in the format 'HH:MM-HH:MM'")
+            except ValueError:
+                update.message.reply_text("Пожалуйста, введи время в верном формате '12:30-13:00'")
 
         else:
-            update.message.reply_text("Please select a date first by clicking 'Book a time'")
+            update.message.reply_text("Сперва выбери дату стирки")
             start(update, context)
 
 def confirm_booking(update: Update, context: CallbackContext) -> None:
@@ -200,9 +219,9 @@ def process_booking(update: Update, context: CallbackContext, start_time: str, e
             c.execute("INSERT INTO bookings VALUES (NULL, ?, ?, ?, ?, ?)", (user_id, booking_start_date, booking_end_date, start_time, end_time))
             conn.commit()
 
-            reply_func(f"Successfully booked time slot from {booking_start_date} {start_time} to {booking_end_date} {end_time}")
+            reply_func(f"Успешно забронировал стирку с {booking_start_date} {start_time} до {booking_end_date} {end_time}")
         else:
-            reply_func("This time slot or the time slot 30 minutes prior or after is already taken")
+            reply_func("Время за 30 минут до начала или 30 минут после уже занято. Выбери другое время")
 
     finally:
         # Close the connection
@@ -234,13 +253,13 @@ def view_bookings(update: Update, context: CallbackContext) -> None:
     conn.close()
 
     if bookings:
-        message_text = "Your bookings are:\n"
+        message_text = "Твои стирки:\n"
         for booking in bookings:
             id, _, start_booking_date, end_booking_date, start_time, end_time = booking
-            message_text += f"From {start_booking_date} {start_time} to {end_booking_date} {end_time}\n"
+            message_text += f"С {start_booking_date} {start_time} до {end_booking_date} {end_time}\n"
         update.callback_query.edit_message_text(message_text)
     else:
-        update.callback_query.edit_message_text("You have no upcoming bookings.")
+        update.callback_query.edit_message_text("У тебя нет предстоящих стирок")
     start(update, context)
 
 
@@ -273,12 +292,12 @@ def cancel_time(update: Update, context: CallbackContext) -> None:
         keyboard = []
         for booking in bookings:
             id, _, start_booking_date, end_booking_date, start_time, end_time = booking
-            keyboard.append([InlineKeyboardButton(f"From {start_booking_date} {start_time} to {end_booking_date} {end_time}", callback_data=f'cancel_{id}_{start_booking_date}_{end_booking_date}_{start_time}_{end_time}')])
+            keyboard.append([InlineKeyboardButton(f"С {start_booking_date} {start_time} до {end_booking_date} {end_time}", callback_data=f'cancel_{id}_{start_booking_date}_{end_booking_date}_{start_time}_{end_time}')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.callback_query.edit_message_text('Please choose a booking to cancel:', reply_markup=reply_markup)
+        update.callback_query.edit_message_text('Выбери время, которое хочешь отменить:', reply_markup=reply_markup)
     else:
-        update.callback_query.edit_message_text("You have no future bookings.")
+        update.callback_query.edit_message_text("У тебя нет забронированных стирок")
 
 
 def delete_booking(update: Update, context: CallbackContext) -> None:
@@ -298,11 +317,11 @@ def delete_booking(update: Update, context: CallbackContext) -> None:
         # Close the connection
         conn.close()
 
-        update.callback_query.edit_message_text(f"Cancelled booking from {start_booking_date} to {end_booking_date} from {start_time} to {end_time}")
+        update.callback_query.edit_message_text(f"Стирка с {start_booking_date} {end_booking_date} до {start_time} {end_time} была отменена")
         start(update, context)
 
 def send_reminder(user_id: int, start_booking_date: str, end_booking_date: str, start_time: str, end_time: str) -> None:
-    context.bot.send_message(chat_id=user_id, text=f"You have a booking from {start_booking_date} to {end_booking_date} from {start_time} to {end_time}. This is your 15-minute reminder.")
+    context.bot.send_message(chat_id=user_id, text=f"Ранее ты забронировал стирку с {start_booking_date} {end_booking_date} до {start_time} {end_time}. Это твое 15-минутное напоминание.")
 
 def main() -> None:
     updater = Updater('KEY', use_context=True)
