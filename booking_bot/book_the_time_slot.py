@@ -109,7 +109,7 @@ def display_not_booked_times(update: Update, context: CallbackContext, selected_
 
         # Check if there is a free slot before this booking
         if (start_time_dt - current_time).total_seconds() > 0:
-            free_time_slots.append((current_time.strftime("%H:%M"), (start_time_dt - timedelta(minutes=1)).strftime("%H:%M")))
+            free_time_slots.append((current_time.strftime("%d.%m.%Y %H:%M"), (start_time_dt - timedelta(minutes=1)).strftime("%d.%m.%Y %H:%M")))
 
         # Update the current_time to the end of this booking
         current_time = end_time_dt + timedelta(minutes=1)  # 1-minute cooldown period
@@ -117,17 +117,20 @@ def display_not_booked_times(update: Update, context: CallbackContext, selected_
     # Check for free time slot between the last booking and 04:00 of the next day
     end_of_extended_day = datetime.strptime(next_date + " 04:00", "%d.%m.%Y %H:%M")
     if (end_of_extended_day - current_time).total_seconds() > 0:
-        free_time_slots.append((current_time.strftime("%H:%M"), end_of_extended_day.strftime("%H:%M")))
+        free_time_slots.append((current_time.strftime("%d.%m.%Y %H:%M"), end_of_extended_day.strftime("%d.%m.%Y %H:%M")))
 
     # Construct and send the message
     if free_time_slots:
         message_text = "Свободное время в выбранный день + 4 часа после:\n"
         for start, end in free_time_slots:
-            message_text += f"{selected_date}                              {start} - {end}\n"
+            start_date, start_time = start.split(" ")
+            end_date, end_time = end.split(" ")
+            message_text += f"{start_date} - {end_date}                             {start_time} - {end_time}\n"
 
         context.bot.send_message(chat_id=update.effective_chat.id, text=message_text)
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text="Чтобы выйти в главное меню нажми /start\nВ этот день все занято, выбери другой день для стирки")
+
 
 from dateutil.parser import parse as parse_time
 
