@@ -74,29 +74,52 @@ def display_booked_times(update: Update, context: CallbackContext, selected_date
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
-    # Get the current date and time
-    current_time = datetime.now().strftime('%H:%M')
-    current_date = datetime.now().strftime('%d.%m.%Y')
+    # Convert selected_date to datetime object
+    selected_date_dt = datetime.strptime(selected_date, "%d.%m.%Y")
 
-    # Query the database for the bookings on the selected date
-    c.execute("SELECT * FROM bookings WHERE start_booking_date = ? AND ((start_booking_date > ?) OR (start_booking_date = ? AND end_time >= ?)) ORDER BY start_time", (selected_date, current_date, current_date, current_time))
+    # Calculate the next date
+    next_date = (selected_date_dt + timedelta(days=1)).strftime("%d.%m.%Y")
+
+    # Query the database for the bookings on the selected date and next date (4 hours into next day)
+    c.execute("SELECT start_time, end_time, start_booking_date FROM bookings WHERE start_booking_date IN (?, ?) ORDER BY start_time", (selected_date, next_date))
 
     bookings = c.fetchall()
 
     # Close the connection
     conn.close()
 
-    if bookings:
-        message_text = "The following time slots are already taken on this date:\n"
-        for booking in bookings:
-            _, _, start_booking_date, end_booking_date, start_time, end_time = booking
-            
-            message_text += f"From {start_booking_date} {start_time} to {end_booking_date} {end_time}\n"
-        
+    # List to keep track of free time slots
+    free_time_slots = []
+
+    # Start of the day
+    current_time = datetime.strptime(selected_date + " 00:00", "%d.%m.%Y %H:%M")
+
+    # Loop through the booked time slots
+    for booking in bookings:
+        start_time, end_time, booking_date = booking
+        start_time_dt = datetime.strptime(f"{booking_date} {start_time}", "%d.%m.%Y %H:%M")
+        end_time_dt = datetime.strptime(f"{booking_date} {end_time}", "%d.%m.%Y %H:%M") + timedelta(minutes=30)  # 30-minute cooldown period
+
+        # Check if there is a free slot before this booking
+        if (start_time_dt - current_time).total_seconds() >= 1800:  # At least 30 minutes
+            free_time_slots.append((current_time.strftime("%d.%m.%Y %H:%M"), (start_time_dt - timedelta(minutes=30)).strftime("%d.%m.%Y %H:%M")))
+
+        # Update the current_time to end of this booking
+        current_time = end_time_dt
+
+    # Check for free time slot between the last booking and 04:00 of the next day
+    end_of_extended_day = datetime.strptime(next_date + " 04:00", "%d.%m.%Y %H:%M")
+    if (end_of_extended_day - current_time).total_seconds() >= 1800:  # At least 30 minutes
+        free_time_slots.append((current_time.strftime("%d.%m.%Y %H:%M"), end_of_extended_day.strftime("%d.%m.%Y %H:%M")))
+
+    # Construct and send the message
+    if free_time_slots:
+        message_text = "The following time slots are available on this date and 4 hours into the next day:\n"
+        for start, end in free_time_slots:
+            message_text += f"From {start} to {end}\n"
         context.bot.send_message(chat_id=update.effective_chat.id, text=message_text)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="No time slots are booked on this date.")
-
+        context.bot.send_message(chat_id=update.effective_chat.id, text="No time slots are available on this date.")
 
 from dateutil.parser import parse as parse_time
 
