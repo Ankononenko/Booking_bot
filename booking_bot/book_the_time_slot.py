@@ -69,14 +69,14 @@ def button(update: Update, context: CallbackContext) -> None:
     elif query.data.startswith('date_'):
         selected_date = query.data[5:]
         context.user_data['selected_date'] = selected_date
-        display_booked_times(update, context, selected_date)
-        query.edit_message_text(text="Отправь мне время, которое хочешь забронировать в формате: '12:30-13:00'")
+        display_not_booked_times(update, context, selected_date)
+        query.edit_message_text(text="Чтобы выйти в главное меню нажми /start\nОтправь мне время, которое хочешь забронировать в формате: '12:30-13:00'")
     elif query.data == '2':
         cancel_time(update, context)
     elif query.data == '3':
         view_bookings(update, context)
 
-def display_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
+def display_not_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
     # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
@@ -138,7 +138,7 @@ def display_booked_times(update: Update, context: CallbackContext, selected_date
 
         context.bot.send_message(chat_id=update.effective_chat.id, text=message_text)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="В этот день все занято, выбери другой день для стирки")
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Чтобы выйти в главное меню нажми /start\nВ этот день все занято, выбери другой день для стирки")
 
 from dateutil.parser import parse as parse_time
 
@@ -328,9 +328,9 @@ def cancel_time(update: Update, context: CallbackContext) -> None:
             keyboard.append([InlineKeyboardButton(f"С {start_booking_date} {start_time} до {end_booking_date} {end_time}", callback_data=f'cancel_{id}_{start_booking_date}_{end_booking_date}_{start_time}_{end_time}')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.callback_query.edit_message_text('Выбери время, которое хочешь отменить:', reply_markup=reply_markup)
+        update.callback_query.edit_message_text('Чтобы выйти в главное меню нажми /start\nВыбери время, которое хочешь отменить:', reply_markup=reply_markup)
     else:
-        update.callback_query.edit_message_text("У тебя нет забронированных стирок")
+        update.callback_query.edit_message_text("Чтобы выйти в главное меню нажми /start\nУ тебя нет забронированных стирок")
 
 
 def delete_booking(update: Update, context: CallbackContext) -> None:
