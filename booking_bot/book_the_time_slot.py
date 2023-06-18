@@ -1,3 +1,5 @@
+# python-telegram-bot-13.4.1 is used
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, Filters
 from datetime import datetime, timedelta
