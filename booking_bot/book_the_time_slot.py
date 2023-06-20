@@ -10,6 +10,7 @@ import locale
 from math import floor, ceil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
+from dateutil.parser import parse as parse_time
 
 local_tz = pytz.timezone('Europe/Moscow')
 
@@ -28,7 +29,7 @@ c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS bookings
              (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id text, start_booking_date text, end_booking_date text, start_time text, end_time text)''')
 
-# Save (commit) the changes
+# Commit the changes to the DB
 conn.commit()
 
 # Create scheduler
@@ -79,8 +80,6 @@ def button(update: Update, context: CallbackContext) -> None:
     elif query.data == '3':
         view_bookings(update, context)
 
-from math import floor, ceil
-
 def display_not_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
     # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
@@ -97,7 +96,6 @@ def display_not_booked_times(update: Update, context: CallbackContext, selected_
 
     bookings = c.fetchall()
 
-    # Close the connection
     conn.close()
 
     # List to keep track of free time slots
@@ -149,8 +147,6 @@ def display_not_booked_times(update: Update, context: CallbackContext, selected_
         context.bot.send_message(chat_id=update.effective_chat.id, text=message_text)
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text="В этот день все занято, выбери другой день для стирки")
-
-from dateutil.parser import parse as parse_time
 
 def book_time(update: Update, context: CallbackContext) -> None:
     if update.message is not None:
@@ -231,13 +227,12 @@ def confirm_booking(update: Update, context: CallbackContext) -> None:
 
 def process_booking(update: Update, context: CallbackContext, start_time: str, end_time: str) -> None:
     booking_start_date = context.user_data['selected_date']
-    booking_end_date = context.user_data.get('selected_end_date', booking_start_date)
+    booking_end_date = booking_start_date
     user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
 
     # To handle callback_query as well as message
     reply_func = update.message.reply_text if update.message else update.callback_query.message.reply_text
 
-    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
@@ -267,15 +262,13 @@ def process_booking(update: Update, context: CallbackContext, start_time: str, e
             reply_func("Время за 30 минут до начала или 30 минут после уже занято. Выбери другое время")
 
     finally:
-        # Close the connection
         conn.close()
 
     start(update, context)
-
+  
 def view_bookings(update: Update, context: CallbackContext) -> None:
     user_id = update.callback_query.from_user.id
 
-    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
@@ -292,7 +285,6 @@ def view_bookings(update: Update, context: CallbackContext) -> None:
 
     bookings = c.fetchall()
 
-    # Close the connection
     conn.close()
 
     if bookings:
@@ -309,11 +301,9 @@ def view_bookings(update: Update, context: CallbackContext) -> None:
 def cancel_time(update: Update, context: CallbackContext) -> None:
     user_id = update.callback_query.from_user.id
 
-    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
-    # Get the current datetime
     now = datetime.now()
 
     # Convert the datetime to the format used in the database
@@ -328,7 +318,6 @@ def cancel_time(update: Update, context: CallbackContext) -> None:
 
     bookings = c.fetchall()
 
-    # Close the connection
     conn.close()
 
     if bookings:
@@ -348,7 +337,6 @@ def delete_booking(update: Update, context: CallbackContext) -> None:
         user_id = update.callback_query.from_user.id
         _, id, start_booking_date, end_booking_date, start_time, end_time = update.callback_query.data.split('_')
 
-        # Create a new SQLite connection and cursor
         conn = sqlite3.connect('bookings.db')
         c = conn.cursor()
 
@@ -357,7 +345,6 @@ def delete_booking(update: Update, context: CallbackContext) -> None:
 
         conn.commit()
 
-        # Close the connection
         conn.close()
 
         update.callback_query.edit_message_text(f"Стирка с {start_booking_date} {end_booking_date} до {start_time} {end_time} была отменена")
