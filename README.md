@@ -1,6 +1,6 @@
 # Booking Bot for Coliving Spaces 🏘️
 <div align="left">
-    <img src="booking_bot/screencast.gif" alt="Booking bot demo">
+    <img src="assets/screencast.gif" alt="Booking bot demo">
 </div>
 
 ---
@@ -29,7 +29,7 @@ git clone https://github.com/finchren/booking_bot.git
 ```
 2. Navigate to the repository:
 ```
-cd booking_bot
+cd Booking_bot/src
 ```
 3. Install the dependencies:
 ```
