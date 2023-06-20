@@ -12,7 +12,6 @@ bot = Bot(token='KEY')
 
 # Function to send start reminders
 def send_start_reminders():
-    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
@@ -29,7 +28,6 @@ def send_start_reminders():
         id, user_id, _, _, start_time, end_time = booking
         bot.send_message(chat_id=user_id, text=f"Напоминание: Твоя стирка начнется в {start_time}")
 
-    # Close the SQLite connection
     conn.close()
 
 # Function to send end reminders
