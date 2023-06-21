@@ -92,8 +92,16 @@ def display_not_booked_times(update: Update, context: CallbackContext, selected_
     next_date = (selected_date_dt + timedelta(days=1)).strftime("%d.%m.%Y")
 
     # Query the database for the bookings on the selected date and next date (4 hours into next day)
-    c.execute("SELECT start_time, end_time, start_booking_date, end_booking_date FROM bookings WHERE (start_booking_date = ?) OR (start_booking_date = ? AND strftime('%H', start_time) < '04') OR (end_booking_date = ? AND strftime('%H', end_time) >= '04') ORDER BY start_booking_date, start_time", (selected_date, next_date, selected_date))
-
+    c.execute("""
+        SELECT start_time, end_time, start_booking_date, end_booking_date
+        FROM bookings
+        WHERE
+            (start_booking_date = ? AND strftime('%H:%M', end_time) > '00:00')
+            OR (start_booking_date = ? AND strftime('%H:%M', start_time) < '04:00')
+            OR (end_booking_date = ? AND strftime('%H:%M', end_time) >= '04:00')
+        ORDER BY start_booking_date, start_time
+    """, (selected_date, next_date, selected_date))
+  
     bookings = c.fetchall()
 
     conn.close()
@@ -246,8 +254,8 @@ def process_booking(update: Update, context: CallbackContext, start_time: str, e
         end_time_30_min_after = (end_time_datetime + timedelta(minutes=30)).strftime('%H:%M')
 
         # Check if the time slot is available
-        c.execute("SELECT * FROM bookings WHERE start_booking_date = ? AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?))",
-                  (booking_start_date, start_time_30_min_prior, start_time_30_min_prior, end_time_30_min_after, end_time_30_min_after))
+        c.execute("SELECT * FROM bookings WHERE start_booking_date = ? AND (start_time < ? AND end_time > ?)",
+                    (booking_start_date, end_time_30_min_after, start_time_30_min_prior))
         if c.fetchone() is None:
             # If start_time is later than or equal to end_time, the booking spans across two days
             if start_time >= end_time:
