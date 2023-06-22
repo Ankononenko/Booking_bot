@@ -14,7 +14,7 @@ def convert_date(date_str):
 
 # Delete each column older than 1 week
 def delete_old_entries():
-    conn = sqlite3.connect('cp_bookings.db')
+    conn = sqlite3.connect('bookings.db')
     conn.create_function("CONVERT_DATE", 1, convert_date)
     c = conn.cursor()
 
