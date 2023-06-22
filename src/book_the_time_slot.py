@@ -7,6 +7,9 @@ import sqlite3
 import logging
 import pytz
 import locale
+import requests
+import json
+from concurrent.futures import ThreadPoolExecutor
 from math import floor, ceil
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -40,7 +43,8 @@ def start(update: Update, context: CallbackContext) -> None:
     keyboard = [
         [InlineKeyboardButton("Забронировать", callback_data='1'),
          InlineKeyboardButton("Отменить", callback_data='2')],
-        [InlineKeyboardButton("Посмотреть свои стирки", callback_data='3')]
+        [InlineKeyboardButton("Посмотреть свои стирки", callback_data='3'),
+        InlineKeyboardButton("Просмотреть все стирки", callback_data='4')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     # Check if update.message is None
@@ -79,6 +83,8 @@ def button(update: Update, context: CallbackContext) -> None:
         cancel_time(update, context)
     elif query.data == '3':
         view_bookings(update, context)
+    elif query.data == '4':
+        display_all_bookings(update, context)
 
 def display_not_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
     # Create a new SQLite connection and cursor
@@ -361,8 +367,46 @@ def delete_booking(update: Update, context: CallbackContext) -> None:
 def send_reminder(user_id: int, start_booking_date: str, end_booking_date: str, start_time: str, end_time: str) -> None:
     context.bot.send_message(chat_id=user_id, text=f"Ранее ты забронировал стирку с {start_booking_date} {end_booking_date} до {start_time} {end_time}. Это твое 15-минутное напоминание.")
 
+def get_username(user_id):
+    response = requests.get(f"https://api.telegram.org/bot6068997270:AAF5kfctIwGasJTLM0c-0RFDNmUSABaZktQ/getChat?chat_id={user_id}")
+    data = json.loads(response.text)
+    return data["result"]["username"]
+
+def get_usernames(user_ids):
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        return list(executor.map(get_username, user_ids))
+
+def display_all_bookings(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('bookings.db')
+    c = conn.cursor()
+
+    c.execute("""
+        SELECT * 
+        FROM bookings 
+        WHERE DATE(SUBSTR(start_booking_date, 7, 4) || '-' || SUBSTR(start_booking_date, 4, 2) || '-' || SUBSTR(start_booking_date, 1, 2)) >= DATE('now', '-3 day') 
+        ORDER BY DATE(SUBSTR(start_booking_date, 7, 4) || '-' || SUBSTR(start_booking_date, 4, 2) || '-' || SUBSTR(start_booking_date, 1, 2)), start_time
+    """)
+
+    all_bookings = c.fetchall()
+
+    usernames = get_usernames([booking[1] for booking in all_bookings])
+
+    formatted_bookings = []
+    for booking, username in zip(all_bookings, usernames):
+        user_id, start_date, end_date, start_time, end_time = booking[1:]
+        formatted_booking = f"@{username} - с {start_date} {start_time} до {end_date} {end_time}"
+        formatted_bookings.append(formatted_booking)
+    
+    c.close()
+    conn.close()
+
+    if formatted_bookings:
+        update.callback_query.message.reply_text('\n'.join(formatted_bookings))
+    else:
+        update.callback_query.message.reply_text('No bookings in the last 3 days.')
+
 def main() -> None:
-    updater = Updater('KEY', use_context=True)
+    updater = Updater('6068997270:AAF5kfctIwGasJTLM0c-0RFDNmUSABaZktQ', use_context=True)
 
     dispatcher = updater.dispatcher
 
