@@ -43,9 +43,11 @@ def main() -> None:
 ```
 bot = Bot(token='KEY')
 ```
-5. Start the bot:
+5. Start the bot and the additional services:
 ```
-python3 book_the_time_slot.py remivder_service.py
+python3 book_the_time_slot.py
+python3 remivder_service.py
+python3 clear_db.py
 ```
 6. Open Telegram, search for your bot's username and start a conversation.
 Follow the instructions provided by the bot to book, cancel or view bookings.
