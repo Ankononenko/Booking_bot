@@ -15,6 +15,7 @@ It is built using the [python-telegram-bot v13.4.1](https://github.com/python-te
 - View all booked time slots.
 - Receive reminders 15 minutes prior to the start of a booking and immediately after the end of the booking.
 - Automatic 30-minute cooldown period between bookings.
+- Ability to view the bookings that other people have made.
 
 ## 🛠️ Installation
 ### Prerequisites:
