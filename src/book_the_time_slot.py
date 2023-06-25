@@ -21,7 +21,6 @@ local_tz = pytz.timezone('Europe/Moscow')
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                      level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 # Create a SQLite database connection
 conn = sqlite3.connect('bookings.db')
 
