@@ -86,7 +86,6 @@ def button(update: Update, context: CallbackContext) -> None:
         display_all_bookings(update, context)
 
 def display_not_booked_times(update: Update, context: CallbackContext, selected_date: str) -> None:
-    # Create a new SQLite connection and cursor
     conn = sqlite3.connect('bookings.db')
     c = conn.cursor()
 
