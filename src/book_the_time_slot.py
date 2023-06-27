@@ -3,6 +3,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext, Filters
 from datetime import datetime, timedelta
+# TODO:Should replace sqlite with another DB system - I need to be able to use datetime objects for date and time comparison
 import sqlite3
 import logging
 import pytz
