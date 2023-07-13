@@ -34,7 +34,11 @@ cd Booking_bot/src
 ```
 3. Install the dependencies:
 ```
+TODO: Make requirements.txt with this list:
 pip install python-telegram-bot==13.4.1
+pip install requests
+pip install python-dateutil
+pip install psycopg2
 ```
 4. Add your Telegram Bot Token that you've recived from the BotFather to the following lines of the _book_the_time_slot.py_ and _remivder_service.py_:
 ```
